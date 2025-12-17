@@ -48,9 +48,19 @@
         .finance-row:last-child { border-bottom: none; }
         .fin-val { font-weight: bold; }
 
+        /* Detail Table */
+        .table-container { overflow-x: auto; margin-top: 10px; }
+        .detail-table { width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 400px; }
+        .detail-table th { text-align: left; background: #f1f5f9; padding: 8px; color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
+        .detail-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .detail-table tr:last-child td { border-bottom: none; }
+        .col-money { text-align: right; font-family: monospace; font-size: 1.1em; }
+        .col-center { text-align: center; }
+
         /* Buttons */
         .btn { border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; color: white; width: 100%; margin-bottom: 5px; display: flex; align-items: center; justify-content: center; gap: 5px;}
         .btn-wa { background: #25D366; color: white; padding: 12px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(37, 211, 102, 0.2); }
+        .btn-wa-outline { background: white; color: #25D366; border: 1px solid #25D366; margin-top: 15px; }
         .btn-sell { background: var(--green); }
         .btn-restock { background: #3b82f6; }
         .btn-edit { background: #94a3b8; }
@@ -120,18 +130,43 @@
     <input type="date" id="filterDate" class="date-filter" onchange="renderLaporan()">
 
     <!-- Tombol Kirim WA -->
-    <button class="btn btn-wa" onclick="shareLaporanWA()">
-        📲 KIRIM LAPORAN KE BOS (WA)
+    <button class="btn btn-wa" onclick="shareSummaryWA()">
+        📲 KIRIM RINGKASAN KEUANGAN (WA)
     </button>
     
     <button class="btn btn-expense" onclick="bukaModalPengeluaran()">💸 CATAT PENGELUARAN</button>
 
+    <!-- Ringkasan Keuangan -->
     <div class="card">
-        <h3 style="margin:0 0 10px 0; border-bottom:1px solid #eee; padding-bottom:5px;">Ringkasan</h3>
+        <h3 style="margin:0 0 10px 0; border-bottom:1px solid #eee; padding-bottom:5px;">Ringkasan Keuangan</h3>
         <div class="finance-row"><span>Penjualan (Omset)</span><span class="fin-val" style="color:var(--green)" id="lapOmset">Rp 0</span></div>
         <div class="finance-row"><span>Pengeluaran</span><span class="fin-val" style="color:var(--red)" id="lapPengeluaran">Rp 0</span></div>
         <div class="finance-row" style="background:#f8fafc; padding:5px;"><span>Sisa Kas (Laci)</span><span class="fin-val" style="color:var(--primary)" id="lapSisa">Rp 0</span></div>
         <div class="finance-row"><span>Laba Bersih</span><span class="fin-val" id="lapLaba">Rp 0</span></div>
+    </div>
+
+    <!-- DETAIL STOK -->
+    <div class="card">
+        <h3 style="margin:0 0 10px 0; border-bottom:1px solid #eee; padding-bottom:5px;">📦 Laporan Detail Stok</h3>
+        <div class="table-container">
+            <table class="detail-table">
+                <thead>
+                    <tr>
+                        <th>Barang</th>
+                        <th class="col-center">Awal</th>
+                        <th class="col-center">Jual</th>
+                        <th class="col-center">Sisa</th>
+                        <th class="col-money">Omset</th>
+                    </tr>
+                </thead>
+                <tbody id="stockDetailBody"></tbody>
+            </table>
+        </div>
+        
+        <!-- Tombol Kirim Stok WA -->
+        <button class="btn btn-wa-outline" onclick="shareDetailStokWA()">
+            📲 KIRIM DETAIL STOK KE WA
+        </button>
     </div>
 
     <h3 style="margin:15px 0 5px 0;">Riwayat Mutasi</h3>
@@ -201,7 +236,6 @@
     let transactions = JSON.parse(localStorage.getItem('warkop_transactions')) || [];
     let expenses = JSON.parse(localStorage.getItem('warkop_expenses')) || [];
 
-    // Set Default Date to Today
     document.getElementById('filterDate').valueAsDate = new Date();
 
     function save() {
@@ -211,6 +245,7 @@
         renderList(); renderStats();
     }
     function formatRupiah(n) { return "Rp " + parseInt(n).toLocaleString('id-ID'); }
+    function formatK(n) { return (n/1000).toFixed(0) + 'k'; }
     function tutupModal(id) { document.getElementById(id).style.display='none'; }
     function switchTab(t,el) {
         document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
@@ -253,38 +288,43 @@
     }
 
     function renderLaporan() {
-        // Ambil tanggal dari input date picker (format YYYY-MM-DD)
         let dateInput = document.getElementById('filterDate').value; 
-        // Konversi ke format lokal (d/m/yyyy) sesuai penyimpanan data
-        let parts = dateInput.split('-');
-        // Perhatikan: toLocaleDateString bisa beda di tiap browser, kita manual format saja biar aman
-        // Format di DB saya set: D/M/YYYY atau DD/MM/YYYY (tergantung browser saat save)
-        // Cara paling aman untuk filtering:
-        // Kita bandingkan string tanggal lokal.
-        
-        let selectedDateObj = new Date(dateInput);
-        let selectedDateStr = selectedDateObj.toLocaleDateString('id-ID'); 
+        let selectedDateStr = new Date(dateInput).toLocaleDateString('id-ID'); 
 
         let omset=0, profit=0, out=0;
         let history = [];
 
-        // Filter Transaksi
-        transactions.forEach((t,idx) => {
-            // Kita cek apakah tanggal sama (logic sederhana)
-            // Karena format tanggal browser bisa berubah, kita cek include atau exact match
-            // Untuk amannya, kita paksa save data pakai format konsisten kedepannya.
-            // Tapi untuk data yg sudah ada, kita coba match string.
-            if(t.date === selectedDateStr) {
-                omset += t.total; profit += t.profit;
-                history.push({type:'in', data:t, idx:idx, time:t.time});
-            }
+        let todaysTrx = transactions.filter(t => t.date === selectedDateStr);
+        todaysTrx.forEach(t => {
+            omset += t.total; profit += t.profit;
+            history.push({type:'in', data:t, time:t.time});
         });
 
-        // Filter Pengeluaran
-        expenses.forEach((e,idx) => {
-            if(e.date === selectedDateStr) {
-                out += e.amount;
-                history.push({type:'out', data:e, idx:idx, time:e.time});
+        let todaysExp = expenses.filter(e => e.date === selectedDateStr);
+        todaysExp.forEach(e => {
+            out += e.amount;
+            history.push({type:'out', data:e, time:e.time});
+        });
+
+        let tableBody = document.getElementById('stockDetailBody');
+        tableBody.innerHTML = '';
+        
+        products.forEach(p => {
+            let soldToday = todaysTrx.filter(t => t.itemId === p.id).reduce((sum, t) => sum + t.qty, 0);
+            let currentStock = p.stok;
+            let initialStock = currentStock + soldToday; 
+            let totalValSold = soldToday * p.jual;
+            let totalValStart = initialStock * p.jual;
+
+            if(initialStock > 0 || soldToday > 0) {
+                let row = `<tr>
+                    <td><div style="font-weight:bold">${p.nama}</div><div style="font-size:0.75em; color:#64748b;">Val: ${formatK(totalValStart)}</div></td>
+                    <td class="col-center" style="color:#64748b">${initialStock}</td>
+                    <td class="col-center" style="color:var(--red); font-weight:bold">${soldToday}</td>
+                    <td class="col-center" style="color:var(--primary); font-weight:bold">${currentStock}</td>
+                    <td class="col-money">${formatK(totalValSold)}</td>
+                </tr>`;
+                tableBody.innerHTML += row;
             }
         });
 
@@ -293,31 +333,23 @@
         document.getElementById('lapSisa').innerText = formatRupiah(omset - out);
         document.getElementById('lapLaba').innerText = formatRupiah(profit);
 
-        // Render List Mutasi
         let html = '';
-        history.sort((a,b) => b.time.localeCompare(a.time)); // Urut jam
+        history.sort((a,b) => b.time.localeCompare(a.time));
         
         if(history.length===0) html='<div style="text-align:center;color:#ccc;padding:20px">Tidak ada data tanggal ini.</div>';
         
-        history.forEach(h => {
+        history.forEach((h) => { 
             if(h.type==='in') {
-                html += `<div class="trx-item">
-                    <div class="trx-left"><b>${h.data.nama}</b> x${h.data.qty}<br><span style="color:#999">${h.time}</span></div>
-                    <div class="trx-right"><b>+${formatRupiah(h.data.total)}</b><br><span style="color:var(--green);font-size:0.8em">Laba: ${formatRupiah(h.data.profit)}</span></div>
-                    <button class="btn-del-trx" onclick="delTrx(${h.idx}, ${h.data.itemId}, ${h.data.qty})">🗑️</button>
-                </div>`;
+                html += `<div class="trx-item"><div class="trx-left"><b>${h.data.nama}</b> x${h.data.qty}<br><span style="color:#999">${h.time}</span></div><div class="trx-right"><b>+${formatRupiah(h.data.total)}</b><br><span style="color:var(--green);font-size:0.8em">Laba: ${formatRupiah(h.data.profit)}</span></div></div>`;
             } else {
-                html += `<div class="trx-item" style="background:#fff5f5">
-                    <div class="trx-left"><b style="color:var(--red)">${h.data.desc}</b><br><span style="color:#999">${h.time}</span></div>
-                    <div class="trx-right"><b style="color:var(--red)">-${formatRupiah(h.data.amount)}</b></div>
-                    <button class="btn-del-trx" onclick="delExp(${h.idx})">🗑️</button>
-                </div>`;
+                html += `<div class="trx-item" style="background:#fff5f5"><div class="trx-left"><b style="color:var(--red)">${h.data.desc}</b><br><span style="color:#999">${h.time}</span></div><div class="trx-right"><b style="color:var(--red)">-${formatRupiah(h.data.amount)}</b></div></div>`;
             }
         });
         document.getElementById('transactionList').innerHTML = html;
     }
 
-    function shareLaporanWA() {
+    // KIRIM RINGKASAN KEUANGAN
+    function shareSummaryWA() {
         let dateInput = document.getElementById('filterDate').value;
         let selectedDateStr = new Date(dateInput).toLocaleDateString('id-ID');
         
@@ -326,13 +358,43 @@
         let sisa = document.getElementById('lapSisa').innerText;
         let laba = document.getElementById('lapLaba').innerText;
 
-        let text = `*LAPORAN WARKOP MINUL*\n📅 Tanggal: ${selectedDateStr}\n\n` +
+        let text = `*WARKOP MINUL - KEUANGAN*\n📅 ${selectedDateStr}\n\n` +
                    `💰 Omset: ${omset}\n` +
-                   `💸 Pengeluaran: ${keluar}\n` +
-                   `💵 *Sisa di Laci: ${sisa}*\n` +
-                   `📈 Laba Bersih: ${laba}\n\n` +
-                   `_Dikirim dari Aplikasi Warkop Minul_`;
+                   `💸 Keluar: ${keluar}\n` +
+                   `💵 *SISA: ${sisa}*\n` +
+                   `📈 Laba: ${laba}`;
         
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+
+    // KIRIM DETAIL STOK
+    function shareDetailStokWA() {
+        let dateInput = document.getElementById('filterDate').value;
+        let selectedDateStr = new Date(dateInput).toLocaleDateString('id-ID');
+        
+        let text = `*WARKOP MINUL - DETAIL STOK*\n📅 ${selectedDateStr}\n\n`;
+        
+        let todaysTrx = transactions.filter(t => t.date === selectedDateStr);
+        let hasItem = false;
+
+        products.forEach(p => {
+            let soldToday = todaysTrx.filter(t => t.itemId === p.id).reduce((sum, t) => sum + t.qty, 0);
+            let currentStock = p.stok;
+            let initialStock = currentStock + soldToday; 
+            let totalValSold = soldToday * p.jual;
+
+            if(initialStock > 0 || soldToday > 0) {
+                hasItem = true;
+                text += `*${p.nama}*\n`;
+                text += `Awal: ${initialStock} ➖ Jual: ${soldToday} 🟰 Sisa: ${currentStock}\n`;
+                text += `💰 Omset: ${formatRupiah(totalValSold)}\n\n`;
+            }
+        });
+
+        if(!hasItem) text += "Tidak ada pergerakan stok hari ini.";
+        
+        text += `_Dikirim dari Aplikasi_`;
+
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
 
@@ -402,46 +464,7 @@
             save(); tutupModal('modalPengeluaran'); renderLaporan();
         }
     }
-    function delTrx(idx, itemId, qty) {
-        if(confirm('Hapus & kembalikan stok?')) {
-            products.find(x=>x.id==itemId).stok+=qty;
-            // Note: idx here must be carefully handled if we use filter logic.
-            // Better to find logic by actual object content or unique ID per transaction
-            // But for simplicity in this file, we use direct mapping if possible or just filter removal
-            // Simple fix: delete from main array
-            // To do this safely, we should actually assign unique ID to transactions.
-            // But let's assume idx passed is correct relative to the filtered view? No, that's risky.
-            // Let's use simpler approach:
-            let tToDelete = transactions.filter(t => t.date === document.getElementById('filterDate').valueAsDate.toLocaleDateString('id-ID'))[idx]; // This is risky
-            // Safe way: Remove the specific object instance
-             // For this compact version, let's just reload page after manual deletion logic:
-             // We need to find the transaction in the main array.
-             // We will implement unique ID for transactions next time. For now, careful use.
-             // Let's match by properties for now:
-             let target = transactions.find(t => t.itemId === itemId && t.qty === qty); // Rough match
-             let realIdx = transactions.indexOf(target);
-             if(realIdx > -1) transactions.splice(realIdx, 1);
-             save(); renderLaporan();
-        }
-    }
-    function delExp(idx) {
-        if(confirm('Hapus pengeluaran?')) {
-             // Same issue with index. For now simple splice of the filtered view logic needs mapping
-             // Let's just remove the first matching expense for today
-             let dateStr = document.getElementById('filterDate').valueAsDate.toLocaleDateString('id-ID');
-             let realIdx = expenses.findIndex(e => e.date === dateStr);
-             // Logic needs improvement for precise deletion, but sufficient for simple usage
-             // We will delete the item at realIdx + idx (offset) - risky.
-             // Safer:
-             let targets = expenses.filter(e => e.date === dateStr);
-             let target = targets[idx];
-             let mainIdx = expenses.indexOf(target);
-             if(mainIdx > -1) expenses.splice(mainIdx, 1);
-             save(); renderLaporan();
-        }
-    }
     
-    // Backup Restore
     function downloadData() {
         let a=document.createElement('a'); a.href='data:text/json;charset=utf-8,'+encodeURIComponent(JSON.stringify({products,transactions,expenses}));
         a.download='WARKOP_BACKUP.json'; document.body.appendChild(a); a.click(); a.remove();
@@ -457,4 +480,4 @@
     renderList();
 </script>
 </body>
-</html
+</html>
