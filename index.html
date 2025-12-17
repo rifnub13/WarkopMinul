@@ -160,12 +160,14 @@
                     </tr>
                 </thead>
                 <tbody id="stockDetailBody"></tbody>
+                <!-- Footer Total di Tabel Layar -->
+                <tfoot id="stockDetailFooter" style="background:#f1f5f9; font-weight:bold;"></tfoot>
             </table>
         </div>
         
         <!-- Tombol Kirim Stok WA -->
         <button class="btn btn-wa-outline" onclick="shareDetailStokWA()">
-            📲 KIRIM DETAIL STOK KE WA
+            📲 KIRIM DETAIL STOK & LABA (WA)
         </button>
     </div>
 
@@ -306,9 +308,13 @@
             history.push({type:'out', data:e, time:e.time});
         });
 
+        // Generate Detail Stok & Hitung Total Detail
         let tableBody = document.getElementById('stockDetailBody');
+        let tableFooter = document.getElementById('stockDetailFooter');
         tableBody.innerHTML = '';
         
+        let totalOmsetTable = 0;
+
         products.forEach(p => {
             let soldToday = todaysTrx.filter(t => t.itemId === p.id).reduce((sum, t) => sum + t.qty, 0);
             let currentStock = p.stok;
@@ -317,6 +323,7 @@
             let totalValStart = initialStock * p.jual;
 
             if(initialStock > 0 || soldToday > 0) {
+                totalOmsetTable += totalValSold;
                 let row = `<tr>
                     <td><div style="font-weight:bold">${p.nama}</div><div style="font-size:0.75em; color:#64748b;">Val: ${formatK(totalValStart)}</div></td>
                     <td class="col-center" style="color:#64748b">${initialStock}</td>
@@ -327,6 +334,14 @@
                 tableBody.innerHTML += row;
             }
         });
+
+        // Render Footer Tabel (Total)
+        tableFooter.innerHTML = `
+            <tr>
+                <td colspan="4" style="text-align:right;">TOTAL:</td>
+                <td class="col-money">${formatK(totalOmsetTable)}</td>
+            </tr>
+        `;
 
         document.getElementById('lapOmset').innerText = formatRupiah(omset);
         document.getElementById('lapPengeluaran').innerText = formatRupiah(out);
@@ -367,33 +382,49 @@
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
 
-    // KIRIM DETAIL STOK
+    // KIRIM DETAIL STOK & LABA
     function shareDetailStokWA() {
         let dateInput = document.getElementById('filterDate').value;
         let selectedDateStr = new Date(dateInput).toLocaleDateString('id-ID');
         
-        let text = `*WARKOP MINUL - DETAIL STOK*\n📅 ${selectedDateStr}\n\n`;
+        let text = `*LAPORAN DETAIL STOK & LABA*\n📅 ${selectedDateStr}\n\n`;
         
         let todaysTrx = transactions.filter(t => t.date === selectedDateStr);
         let hasItem = false;
+        let grandTotalOmset = 0;
+        let grandTotalProfit = 0;
 
         products.forEach(p => {
             let soldToday = todaysTrx.filter(t => t.itemId === p.id).reduce((sum, t) => sum + t.qty, 0);
             let currentStock = p.stok;
             let initialStock = currentStock + soldToday; 
-            let totalValSold = soldToday * p.jual;
+            
+            // Hitung Uang
+            let totalValSold = soldToday * p.jual; // Omset item
+            let totalProfit = soldToday * (p.jual - p.beli); // Laba item
 
             if(initialStock > 0 || soldToday > 0) {
                 hasItem = true;
+                // Akumulasi Total
+                grandTotalOmset += totalValSold;
+                grandTotalProfit += totalProfit;
+
+                // Format Pesan
                 text += `*${p.nama}*\n`;
-                text += `Awal: ${initialStock} ➖ Jual: ${soldToday} 🟰 Sisa: ${currentStock}\n`;
-                text += `💰 Omset: ${formatRupiah(totalValSold)}\n\n`;
+                text += `📦 Awal: ${initialStock} ➖ Jual: ${soldToday} 🟰 Sisa: ${currentStock}\n`;
+                text += `💰 Omset: ${formatRupiah(totalValSold)}\n`;
+                text += `📈 Laba: ${formatRupiah(totalProfit)}\n`;
+                text += `------------------\n`;
             }
         });
 
-        if(!hasItem) text += "Tidak ada pergerakan stok hari ini.";
+        if(!hasItem) text += "Tidak ada pergerakan stok hari ini.\n";
         
-        text += `_Dikirim dari Aplikasi_`;
+        // Footer Total Keseluruhan
+        text += `\n*TOTAL KESELURUHAN:*\n`;
+        text += `💰 TOT. OMSET: ${formatRupiah(grandTotalOmset)}\n`;
+        text += `📈 TOT. LABA: ${formatRupiah(grandTotalProfit)}\n`;
+        text += `\n_Dikirim dari Aplikasi Warkop Minul_`;
 
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
